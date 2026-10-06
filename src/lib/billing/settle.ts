@@ -59,6 +59,12 @@ export async function settlePayment(reference: string, source: PaymentSource, pr
     throw error;
   }
   if (payment.status === "pending") return { outcome: "pending", userId, reason: payment.providerStatus };
+  if (payment.status === "abandoned") {
+    // "Not paid yet" is not a failure. The provider reports an open checkout
+    // as abandoned too, and that same reference may still be paid a minute
+    // later. The INITIATION row with nothing after it already tells the story.
+    return { outcome: "failed", userId, reason: "abandoned" };
+  }
   if (payment.status !== "success") {
     await recordFailure(initiation, source, payment.providerStatus, { gatewayResponse: payment.gatewayResponse });
     return { outcome: "failed", userId, reason: payment.providerStatus };

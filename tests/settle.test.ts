@@ -52,13 +52,23 @@ describe("settlePayment", () => {
     expect(types.filter((t) => t === "DUPLICATE")).toHaveLength(9);
   });
 
-  it("grants nothing when the provider says the payment was abandoned", async () => {
+  it("grants nothing for an unpaid checkout, and does not call it a failure", async () => {
     const user = await newUser();
     const reference = await initiate(user.id);
     const abandoned = providerSaying({ status: "abandoned", providerStatus: "abandoned" });
     expect(await settlePayment(reference, "RETURN", abandoned)).toMatchObject({ outcome: "failed", reason: "abandoned" });
-    await settlePayment(reference, "RETURN", abandoned);
-    expect(await typesFor(reference)).toEqual(["FAILURE", "INITIATION"]); // one FAILURE, however often we ask
+    expect(await typesFor(reference)).toEqual(["INITIATION"]);
+    // ...and the same reference can still be paid afterwards.
+    expect((await settlePayment(reference, "WEBHOOK", providerSaying({}))).outcome).toBe("fulfilled");
+  });
+
+  it("records a declined payment once, however often we are told, and grants nothing", async () => {
+    const user = await newUser();
+    const reference = await initiate(user.id);
+    const declined = providerSaying({ status: "failed", providerStatus: "failed", gatewayResponse: "Declined" });
+    expect(await settlePayment(reference, "RETURN", declined)).toMatchObject({ outcome: "failed", reason: "failed" });
+    await settlePayment(reference, "WEBHOOK", declined);
+    expect(await typesFor(reference)).toEqual(["FAILURE", "INITIATION"]);
     expect((await loadSubscription(user.id, new Date())).state.entitled).toBe(false);
   });
 
