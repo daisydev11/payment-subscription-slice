@@ -67,7 +67,7 @@ export async function settlePayment(reference: string, source: PaymentSource, pr
   return db.$transaction(async (tx) => {
     // One fulfilment at a time per user. Two payments landing together must
     // each see the period the other one bought.
-    await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtext(${userId}))`;
+    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${userId}))`;
 
     const prior = await tx.paymentEvent.findMany({
       where: { reference, type: { in: ["VERIFICATION", "FULFILMENT"] } },
