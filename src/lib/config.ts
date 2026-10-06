@@ -36,6 +36,21 @@ export const config = {
     verifyByIp: { max: 20, windowMs: 15 * MINUTE },
     resendByIp: { max: 5, windowMs: 15 * MINUTE },
   },
+  billing: {
+    currency: "NGN",
+    // Prices in minor units (kobo). 500000 = NGN 5,000.00.
+    plans: {
+      MONTHLY: { priceMinor: 500_000, label: "Monthly" },
+      YEARLY: { priceMinor: 5_000_000, label: "Yearly" },
+    },
+    // How long we wait for the payment provider before telling the user.
+    providerTimeoutMs: 10_000,
+    cancellationReasonMaxLength: 500,
+    rateLimits: {
+      checkoutByUser: { max: 5, windowMs: 10 * MINUTE },
+      checkoutByIp: { max: 20, windowMs: 10 * MINUTE },
+    },
+  },
 } as const;
 
 export type RateLimitRule = { max: number; windowMs: number };
