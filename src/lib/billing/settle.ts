@@ -106,18 +106,21 @@ export async function settlePayment(reference: string, source: PaymentSource, pr
       return { outcome: "failed", userId, reason: "amount_mismatch" } as const;
     }
 
-    // What does this payment buy? An upgrade starts a fresh year today.
-    // Anything else continues from the end of time already paid for, which is
-    // also what makes paying twice extend access instead of wasting money.
+    // What does this payment buy? An upgrade from monthly starts a fresh year
+    // today. Anything else continues from the end of time already paid for:
+    // a renewal, a second payment for the same plan, or a second payment for
+    // the same upgrade. That is what makes paying twice extend access instead
+    // of buying a period the user already owns.
     const at = now();
     const state = deriveState(await loadFulfilments(userId, tx), null, at);
-    const paidAhead = state.periodEnd && (state.entitled || initiation.kind === "RENEWAL") ? state.periodEnd : null;
-    const periodStart = initiation.kind === "UPGRADE" || !paidAhead ? at : paidAhead;
+    const replacesMonthly = initiation.kind === "UPGRADE" && state.interval !== "YEARLY";
+    const paidAhead = state.periodEnd && (state.entitled || initiation.kind === "RENEWAL") && !replacesMonthly ? state.periodEnd : null;
+    const periodStart = paidAhead ?? at;
     const periodEnd = addInterval(periodStart, initiation.interval);
 
     // ENTITLEMENT IS GRANTED HERE, and only here.
     await tx.paymentEvent.create({
-      data: { ...carry(initiation, source), type: "FULFILMENT", periodStart, periodEnd, detail: { extendedExistingPeriod: Boolean(paidAhead) && initiation.kind !== "UPGRADE" } },
+      data: { ...carry(initiation, source), type: "FULFILMENT", periodStart, periodEnd, detail: { extendedExistingPeriod: Boolean(paidAhead) } },
     });
 
     const cleared = initiation.kind === "RENEWAL" ? {} : { cancelAtPeriodEnd: false, cancelledAt: null, cancellationReason: null };

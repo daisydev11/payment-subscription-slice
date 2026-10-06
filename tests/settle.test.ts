@@ -13,10 +13,10 @@ async function newUser() {
   return db.user.create({ data: { email: `settle-${run}-${++counter}@test.local`, name: "Test", passwordHash: "x", emailVerifiedAt: new Date() } });
 }
 
-async function initiate(userId: string) {
+async function initiate(userId: string, kind: "SUBSCRIBE" | "UPGRADE" = "SUBSCRIBE") {
   const reference = `pay-test${run}${++counter}`;
   await db.paymentEvent.create({
-    data: { userId, reference, type: "INITIATION", source: "CHECKOUT", kind: "SUBSCRIBE", interval: "YEARLY", amountMinor: 5_000_000, currency: "NGN", createdAt: new Date() },
+    data: { userId, reference, type: "INITIATION", source: "CHECKOUT", kind, interval: "YEARLY", amountMinor: 5_000_000, currency: "NGN", createdAt: new Date() },
   });
   return reference;
 }
@@ -94,6 +94,22 @@ describe("settlePayment", () => {
     const [first, second] = fulfilments.sort((x, y) => x.periodStart.getTime() - y.periodStart.getTime());
     expect(second.periodStart).toEqual(first.periodEnd); // back to back, no overlap
     expect(state.periodEnd!.getUTCFullYear() - first.periodStart.getUTCFullYear()).toBe(2);
+  });
+});
+
+describe("paying for the same upgrade twice", () => {
+  it("starts the year once and extends it with the second payment", async () => {
+    const user = await newUser();
+    const start = new Date();
+    await db.paymentEvent.create({
+      data: { userId: user.id, reference: `pay-m${run}`, type: "FULFILMENT", source: "WEBHOOK", kind: "SUBSCRIBE", interval: "MONTHLY", amountMinor: 500_000, currency: "NGN", periodStart: start, periodEnd: new Date(start.getTime() + 30 * 86_400_000), createdAt: start },
+    });
+    const [a, b] = [await initiate(user.id, "UPGRADE"), await initiate(user.id, "UPGRADE")];
+    await settlePayment(a, "WEBHOOK", providerSaying({}));
+    await settlePayment(b, "WEBHOOK", providerSaying({}));
+    const yearly = (await loadSubscription(user.id, new Date())).fulfilments.filter((f) => f.interval === "YEARLY");
+    expect(yearly).toHaveLength(2);
+    expect(yearly[1].periodStart).toEqual(yearly[0].periodEnd); // not the same year bought twice
   });
 });
 
